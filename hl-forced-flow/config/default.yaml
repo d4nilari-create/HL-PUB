@@ -1,0 +1,89 @@
+# =============================================================================
+# hl-forced-flow — конфигурация по умолчанию (бесплатная версия).
+# Все пороги, горизонты, decay и бины задаются здесь и только здесь.
+# Переопределение: env HLFF_* или свой yaml через HLFF_CONFIG / --config.
+# =============================================================================
+
+system:
+  timezone: "UTC"
+  snapshot_interval_sec: 60          # как часто снимать snapshot состояния на диск
+  state_persist_path: "./data/state"
+
+markets:
+  # Пустой список = все монеты из meta Hyperliquid.
+  # Для бесплатного старта лучше 3-10 ликвидных монет — меньше расход лимитов API.
+  coins: ["BTC", "ETH", "SOL"]
+  book_levels: 20                    # сколько уровней стакана держим на сторону
+
+ingestion:
+  ironflow:
+    enabled: true
+    base_url: "https://api.ironflow.sh"
+    stream_path: "/v1/liquidations/stream"   # SSE, live-ликвидации
+    history_path: "/v1/liquidations"         # REST с after=<cursor>
+    reconnect_min_sec: 1.0
+    reconnect_max_sec: 60.0
+
+  liqflow:
+    enabled: true
+    base_url: "https://node.liqflow.app"
+    levels_refresh_sec: 300          # нода обновляет данные каждые ~5 минут
+    stop_levels_limit: 500           # макс. ордеров стоп-кластеров на монету за запрос
+
+  oxarchive:
+    enabled: true
+    base_url: "https://api.0xarchive.io"
+    trades_poll_sec: 5               # опрос свежих trades по курсору
+    levels_poll_sec: 300             # liquidation levels + trigger levels
+    trades_limit: 200                # trades за один запрос
+
+  hl:
+    enabled: true
+    info_url: "https://api.hyperliquid.xyz/info"
+    ws_url: "wss://api.hyperliquid.xyz/ws"
+    mids_poll_sec: 5                 # allMids как fallback, если WS не поднялся
+    reconnect_min_sec: 1.0
+    reconnect_max_sec: 60.0
+
+  side_channels:
+    binance:
+      enabled: false                 # бесплатный forceOrder-стрим (опционально)
+      ws_url: "wss://fstream.binance.com/ws"
+      symbols: ["btcusdt", "ethusdt", "solusdt"]
+
+features:
+  depth_bins_bps: [5, 10, 25, 50]    # бины pressure surface от mid
+  markout_horizons_sec: [10, 60, 300]
+  markout:
+    price_buffer_sec: 1800           # ring buffer mid-prices
+    min_fills_for_cohort: 30         # мин. филлов адреса до когорты
+    decay_half_life_sec: 3600        # EWMA half-life online-оценок
+  cohorts:
+    donor_bps_threshold: -2.0        # mean 10s markout < порога → donor
+    informed_bps_threshold: 2.0      # mean 10s markout > порога → informed
+  pressure:
+    ewma_halflife_sec: 15            # сглаживание скорости pressure
+    fatigue_halflife_sec: 120        # «усталость» кластера после срабатывания
+  regime:
+    window_sec: 180
+    cascade_liq_notional_usd: 250000   # ликвидационный номинал за окно → каскад
+    quiet_max_taker_notional_usd: 50000
+
+signals:
+  ttl_sec: 300                       # жизнь сигнала без подтверждения
+  max_active_per_coin: 3
+  continuation:
+    min_pressure_ratio: 2.5          # ближайший бин vs медиана монеты
+    min_cluster_notional_usd: 100000
+    max_informed_flow_bps: -1.0      # встречный informed-поток не сильнее
+  fade:
+    cluster_absorption_frac: 0.8     # доля номинала кластера «съедена»
+    min_donor_notional_usd: 50000
+    stabilization_sec: 60            # цена держится N сек после прохода кластера
+
+dashboard:
+  host: "127.0.0.1"
+  port: 8400
+
+storage:
+  parquet_dir: "./data/parquet"      # опциональный sink событий (jsonl, см. sink.py)
